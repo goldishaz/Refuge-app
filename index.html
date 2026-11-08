@@ -17,6 +17,12 @@
 @font-face{font-family:"Atkinson Hyperlegible";src:url(fonts/atkinson-700.woff2) format("woff2");font-weight:700;font-style:normal;font-display:swap}
 .mapwrap{border-radius:16px;overflow:hidden;border:1px solid var(--line);margin-bottom:12px;height:min(62vh,540px);background:var(--surface-2)}
 #map{width:100%;height:100%}
+.zone{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.zone:first-child{border-top:0}
+.zone .zn{flex:1;min-width:0}
+.zone .zn small{display:block;color:var(--muted);font-size:.875rem}
+.zone .za{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.zone.on .zn strong{color:var(--safe)}
 .mpin{width:30px;height:30px;border-radius:50%;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:"Atkinson Hyperlegible",system-ui,sans-serif}
 .maplibregl-popup-content{color:#13202F;font-family:"Atkinson Hyperlegible",system-ui,sans-serif;font-size:15px;padding:12px 14px}
 .maplibregl-popup-content .btn{background:#13202F;color:#fff}
@@ -161,10 +167,12 @@ textarea{min-height:76px;resize:vertical}
     <p class="lead">La carte, tes lieux d’urgence et tes points de rencontre, même sans réseau.</p>
     <div class="mapwrap" id="mapwrap" hidden><div id="map"></div></div>
     <div class="panel" id="map-panel">
-      <p id="map-status" style="margin:0"></p>
+      <h2>Cartes hors ligne</h2>
+      <p id="map-status" style="margin:0 0 6px"></p>
       <div class="meter" id="map-meter" hidden><span id="map-bar" style="width:0"></span></div>
-      <div class="row" style="margin-top:10px"><button class="btn small" data-act="map-dl" id="map-dl">Télécharger la carte</button><button class="btn line small" data-act="map-del" id="map-del" hidden>Supprimer la carte</button></div>
+      <p class="note" id="map-prog" style="margin:0" aria-live="polite"></p>
       <p class="msg" id="map-err"></p>
+      <div id="zone-list"></div>
     </div>
     <div id="autour-dyn"></div>
   </section>
@@ -649,71 +657,115 @@ function renderFamily(){
 
 function renderAll(){ renderHome(); renderAround(); renderSecours(); renderKit(); renderHelp(); renderFamily(); netStatus(); }
 
-/* ---------- Carte hors ligne ---------- */
-const MAPFILE = "carte.pmtiles", MAPCACHE = "refuge-carte";
+/* ---------- Cartes hors ligne par département ---------- */
+const ZONES = [
+  {id:"paris", name:"Paris", file:"cartes/paris.pmtiles", bbox:[2.22,48.81,2.47,48.91], mo:33},
+  {id:"hauts-de-seine", name:"Hauts-de-Seine", file:"cartes/hauts-de-seine.pmtiles", bbox:[2.14,48.72,2.34,48.96], mo:41},
+  {id:"seine-saint-denis", name:"Seine-Saint-Denis", file:"cartes/seine-saint-denis.pmtiles", bbox:[2.28,48.80,2.61,49.02], mo:59},
+  {id:"val-de-marne", name:"Val-de-Marne", file:"carte.pmtiles", bbox:[2.30,48.68,2.62,48.86], mo:43},
+  {id:"essonne", name:"Essonne", file:"cartes/essonne.pmtiles", bbox:[1.91,48.28,2.59,48.78], mo:67},
+  {id:"yvelines", name:"Yvelines", file:"cartes/yvelines.pmtiles", bbox:[1.44,48.43,2.24,49.09], mo:88},
+  {id:"val-d-oise", name:"Val-d’Oise", file:"cartes/val-d-oise.pmtiles", bbox:[1.60,48.90,2.60,49.24], mo:78},
+  {id:"seine-et-marne", name:"Seine-et-Marne", file:"cartes/seine-et-marne.pmtiles", bbox:[2.39,48.12,3.56,49.12], mo:55}
+];
+const MAPCACHE = "refuge-carte", ZKEY = "refuge-zones";
 const BASE = location.origin + location.pathname.replace(/[^/]*$/, "");
-let map = null, markers = [], tempMarker = null, mapSize = 0, pmProto = null;
+let map = null, markers = [], tempMarker = null, pmProto = null, activeZone = null, busy = false;
+let have = {};
+try{ have = JSON.parse(localStorage.getItem(ZKEY) || "{}") || {}; }catch(e){ have = {}; }
+const saveHave = () => { try{ localStorage.setItem(ZKEY, JSON.stringify(have)); }catch(e){} };
 const gid = id => document.getElementById(id);
 const mo = n => Math.max(1, Math.round(n/1048576)) + " Mo";
-async function storedMap(){
-  if(!("caches" in window)) return null;
-  try{ const c = await caches.open(MAPCACHE); const r = await c.match(BASE + MAPFILE); return r ? await r.blob() : null; }catch(e){ return null; }
-}
-function refreshMapPanel(){
-  gid("map-status").textContent = map
-    ? `Carte enregistrée sur ce téléphone (${mo(mapSize)}). Elle fonctionne sans réseau. Touche la carte pour placer un nouveau lieu à cet endroit.`
-    : "Télécharge la carte une seule fois, de préférence en wifi. Ensuite, elle s’affiche sans réseau, avec ta position GPS.";
-  gid("map-dl").textContent = map ? "Mettre à jour la carte" : "Télécharger la carte";
-  gid("map-del").hidden = !map;
+const zoneById = id => ZONES.find(z => z.id === id);
+const inZone = (z, p) => p && p.lng >= z.bbox[0] && p.lng <= z.bbox[2] && p.lat >= z.bbox[1] && p.lat <= z.bbox[3];
+
+function renderZones(){
+  const list = gid("zone-list"); if(!list) return;
+  const any = Object.keys(have).length > 0;
+  gid("map-status").textContent = any
+    ? "Les cartes téléchargées restent sur ce téléphone et marchent sans réseau. Touche la carte pour y placer un lieu."
+    : "Choisis ton département et télécharge sa carte une seule fois, de préférence en wifi. Ensuite, elle s’affiche sans réseau.";
+  list.innerHTML = ZONES.map(z => {
+    const got = have[z.id] !== undefined, on = activeZone === z.id, here = inZone(z, S.pos);
+    const info = got ? (on ? "Affichée en ce moment" : "Téléchargée") + (have[z.id] ? `, ${mo(have[z.id])}` : "") : `Environ ${z.mo} Mo`;
+    const btns = got
+      ? `${on ? "" : `<button class="btn small" data-zshow="${z.id}" ${busy?"disabled":""}>Afficher</button>`}<button class="btn line small" data-zdel="${z.id}" ${busy?"disabled":""}>Supprimer</button>`
+      : `<button class="btn ${here ? "" : "line "}small" data-zdl="${z.id}" ${busy?"disabled":""}>Télécharger</button>`;
+    return `<div class="zone${on ? " on" : ""}"><div class="zn"><strong>${z.name}</strong><small>${info}${here ? ", tu es dans cette zone" : ""}</small></div><div class="za">${btns}</div></div>`;
+  }).join("");
   gid("mapwrap").hidden = !map;
 }
-async function downloadMap(){
-  const st = gid("map-status"), err = gid("map-err"), meter = gid("map-meter"), bar = gid("map-bar"), btn = gid("map-dl");
+async function cachedBlob(z){
+  if(!("caches" in window)) return null;
+  try{ const c = await caches.open(MAPCACHE); const r = await c.match(BASE + z.file); return r ? await r.blob() : null; }catch(e){ return null; }
+}
+async function downloadZone(id){
+  const z = zoneById(id); if(!z || busy) return;
+  const err = gid("map-err"), meter = gid("map-meter"), bar = gid("map-bar"), prog = gid("map-prog");
   err.textContent = "";
-  if(!navigator.onLine){ err.textContent = "Il faut du réseau, de préférence du wifi, pour télécharger la carte."; return; }
-  if(!("caches" in window)){ err.textContent = "Ce navigateur ne permet pas d’enregistrer la carte. Essaie avec Safari sur iPhone ou Chrome sur Android."; return; }
-  btn.disabled = true; meter.hidden = false; bar.style.width = "0%"; st.textContent = "Téléchargement de la carte…";
+  if(!navigator.onLine){ err.textContent = "Il faut du réseau, de préférence du wifi, pour télécharger une carte."; return; }
+  if(!("caches" in window)){ err.textContent = "Ce navigateur ne permet pas d’enregistrer la carte. Essaie avec Chrome sur Android ou Safari sur iPhone."; return; }
+  busy = true; renderZones(); meter.hidden = false; bar.style.width = "0%"; prog.textContent = `Téléchargement de la carte ${z.name}…`;
   try{
-    const res = await fetch(BASE + MAPFILE, {cache:"no-store"});
+    const res = await fetch(BASE + z.file, {cache:"no-store"});
     if(!res.ok) throw new Error(res.status === 404 ? "absent" : "http");
     const total = +res.headers.get("Content-Length") || 0;
     const reader = res.body.getReader(); const chunks = []; let got = 0;
     for(;;){
       const {done, value} = await reader.read(); if(done) break;
       chunks.push(value); got += value.length;
-      if(total){ bar.style.width = Math.round(got/total*100) + "%"; st.textContent = `Téléchargement : ${mo(got)} sur ${mo(total)}`; }
-      else st.textContent = `Téléchargement : ${mo(got)}`;
+      if(total){ bar.style.width = Math.round(got/total*100) + "%"; prog.textContent = `${z.name} : ${mo(got)} sur ${mo(total)}`; }
+      else prog.textContent = `${z.name} : ${mo(got)}`;
     }
     const blob = new Blob(chunks, {type:"application/octet-stream"});
     const c = await caches.open(MAPCACHE);
-    await c.put(BASE + MAPFILE, new Response(blob, {headers:{"Content-Type":"application/octet-stream"}}));
+    await c.put(BASE + z.file, new Response(blob, {headers:{"Content-Type":"application/octet-stream"}}));
     if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-    await initMap(blob);
-    toast("Carte enregistrée : elle marche maintenant sans réseau");
+    have[z.id] = blob.size; saveHave();
+    busy = false; prog.textContent = "";
+    await showZone(z.id, blob);
+    toast(`Carte ${z.name} enregistrée : elle marche maintenant sans réseau`);
   }catch(e){
-    err.textContent = e.message === "absent" ? "La carte n’est pas encore disponible sur le site : le fichier carte.pmtiles doit y être ajouté."
-      : (e.name === "QuotaExceededError" ? "Pas assez de place sur le téléphone pour enregistrer la carte. Libère de l’espace puis réessaie."
+    prog.textContent = "";
+    err.textContent = e.message === "absent" ? `La carte ${z.name} n’est pas encore disponible sur le site.`
+      : (e.name === "QuotaExceededError" ? "Pas assez de place sur le téléphone. Supprime une autre carte ou libère de l’espace, puis réessaie."
       : "Le téléchargement a échoué. Vérifie ta connexion et réessaie.");
   }finally{
-    btn.disabled = false; meter.hidden = true; refreshMapPanel();
+    busy = false; meter.hidden = true; renderZones();
   }
 }
-async function deleteMap(){
-  if(!confirm("Supprimer la carte de ce téléphone ? Il faudra du réseau pour la télécharger à nouveau.")) return;
-  try{ await caches.delete(MAPCACHE); }catch(e){}
-  if(map){ map.remove(); map = null; markers = []; tempMarker = null; }
-  mapSize = 0; refreshMapPanel(); renderAround(); toast("Carte supprimée");
+async function showZone(id, blob){
+  const z = zoneById(id); if(!z) return;
+  blob = blob || await cachedBlob(z);
+  if(!blob){ delete have[id]; saveHave(); renderZones(); gid("map-err").textContent = `La carte ${z.name} n’est plus sur ce téléphone. Télécharge-la à nouveau.`; return; }
+  await initMap(blob, z);
 }
-async function initMap(blob){
+async function deleteZone(id){
+  const z = zoneById(id); if(!z) return;
+  if(!confirm(`Supprimer la carte ${z.name} de ce téléphone ? Il faudra du réseau pour la télécharger à nouveau.`)) return;
+  try{ const c = await caches.open(MAPCACHE); await c.delete(BASE + z.file); }catch(e){}
+  delete have[id]; saveHave();
+  if(activeZone === id){
+    if(map){ map.remove(); map = null; markers = []; tempMarker = null; }
+    activeZone = null;
+    const next = ZONES.find(x => have[x.id] !== undefined);
+    if(next){ await showZone(next.id); }
+  }
+  renderZones(); renderAround(); toast(`Carte ${z.name} supprimée`);
+}
+async function initMap(blob, z){
   const err = gid("map-err");
-  if(typeof maplibregl === "undefined" || typeof pmtiles === "undefined" || typeof basemaps === "undefined"){ err.textContent = "Le moteur de carte n’a pas pu se charger. Rouvre l’appli avec du réseau une fois."; return; }
+  if(typeof maplibregl === "undefined" || typeof pmtiles === "undefined" || typeof basemaps === "undefined"){ err.textContent = "Le moteur de carte n’a pas pu se charger. Rouvre l’appli une fois avec du réseau."; return; }
   if(map){ map.remove(); map = null; markers = []; tempMarker = null; }
   if(!pmProto){ pmProto = new pmtiles.Protocol(); maplibregl.addProtocol("pmtiles", pmProto.tile); }
-  const archive = new pmtiles.PMTiles(new pmtiles.FileSource(new File([blob], MAPFILE)));
+  const key = z.id + ".pmtiles";
+  const archive = new pmtiles.PMTiles(new pmtiles.FileSource(new File([blob], key)));
   pmProto.add(archive);
   let h;
-  try{ h = await archive.getHeader(); }catch(e){ err.textContent = "Le fichier de carte est abîmé. Supprime-le puis télécharge-le à nouveau."; return; }
-  mapSize = blob.size;
+  try{ h = await archive.getHeader(); }catch(e){ err.textContent = `Le fichier de carte ${z.name} est abîmé. Supprime-le puis télécharge-le à nouveau.`; return; }
+  err.textContent = "";
+  activeZone = z.id; S.zone = z.id; save();
+  if(!have[z.id]){ have[z.id] = blob.size; saveHave(); }
   gid("mapwrap").hidden = false;
   const flavor = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   const inside = S.pos && S.pos.lng >= h.minLon && S.pos.lng <= h.maxLon && S.pos.lat >= h.minLat && S.pos.lat <= h.maxLat;
@@ -723,7 +775,7 @@ async function initMap(blob){
       version:8,
       glyphs: BASE + "assets/fonts/{fontstack}/{range}.pbf",
       sprite: BASE + "assets/sprites/" + flavor,
-      sources:{ protomaps:{ type:"vector", url:"pmtiles://" + MAPFILE, attribution:'<a href="https://www.openstreetmap.org/copyright">© contributeurs OpenStreetMap</a>, <a href="https://protomaps.com">Protomaps</a>' } },
+      sources:{ protomaps:{ type:"vector", url:"pmtiles://" + key, attribution:'<a href="https://www.openstreetmap.org/copyright">© contributeurs OpenStreetMap</a>, <a href="https://protomaps.com">Protomaps</a>' } },
       layers: basemaps.layers("protomaps", basemaps.namedFlavor(flavor), {lang:"fr"})
     },
     center: inside ? [S.pos.lng, S.pos.lat] : [(h.minLon+h.maxLon)/2, (h.minLat+h.maxLat)/2],
@@ -735,7 +787,14 @@ async function initMap(blob){
   map.addControl(new maplibregl.NavigationControl({showCompass:true}), "top-right");
   const geo = new maplibregl.GeolocateControl({positionOptions:{enableHighAccuracy:true}, trackUserLocation:true, showAccuracyCircle:true});
   map.addControl(geo, "top-right");
-  geo.on("geolocate", p => { S.pos = {lat:p.coords.latitude, lng:p.coords.longitude, acc:Math.round(p.coords.accuracy), t:nowTxt()}; save(); });
+  geo.on("geolocate", p => {
+    S.pos = {lat:p.coords.latitude, lng:p.coords.longitude, acc:Math.round(p.coords.accuracy), t:nowTxt()}; save();
+    const cur = zoneById(activeZone);
+    if(cur && !inZone(cur, S.pos)){
+      const other = ZONES.find(x => x.id !== cur.id && inZone(x, S.pos));
+      if(other && !geo._refugeWarned){ geo._refugeWarned = true; toast(`Tu es en ${other.name} : ${have[other.id] !== undefined ? "affiche" : "télécharge"} sa carte plus bas.`); renderZones(); }
+    }
+  });
   map.addControl(new maplibregl.ScaleControl({unit:"metric"}), "bottom-left");
   map.on("click", e => {
     const {lng, lat} = e.lngLat;
@@ -746,7 +805,24 @@ async function initMap(blob){
     toast("Point choisi : donne-lui un nom plus bas, puis « Ajouter ce lieu »");
   });
   map.on("error", ev => { if(ev && ev.error) console.warn(ev.error); });
-  refreshMapPanel(); renderAround();
+  renderZones(); renderAround();
+}
+async function initZones(){
+  if("caches" in window){
+    try{
+      const c = await caches.open(MAPCACHE);
+      for(const z of ZONES){
+        const r = await c.match(BASE + z.file);
+        if(r){ if(have[z.id] === undefined) have[z.id] = 0; }
+        else delete have[z.id];
+      }
+      saveHave();
+    }catch(e){}
+  }
+  renderZones();
+  const pick = (S.zone && have[S.zone] !== undefined) ? S.zone
+    : (ZONES.find(z => have[z.id] !== undefined && inZone(z, S.pos)) || ZONES.find(z => have[z.id] !== undefined) || {}).id;
+  if(pick) showZone(pick);
 }
 function drawMarkers(){
   if(!map) return;
@@ -790,6 +866,9 @@ document.addEventListener("click", e => {
     window.open("sms:" + c.tel.replace(/\s/g,"") + "?&body=" + body, "_top");
     return;
   }
+  if(t.dataset.zdl){ downloadZone(t.dataset.zdl); return; }
+  if(t.dataset.zshow){ showZone(t.dataset.zshow); return; }
+  if(t.dataset.zdel){ deleteZone(t.dataset.zdel); return; }
   if(t.dataset.guide){ startGuide(+t.dataset.guide); return; }
   if(t.dataset.cat){ catFilter = t.dataset.cat; renderAround(); return; }
   if(t.dataset.del){ S.places = S.places.filter(p => p.id !== +t.dataset.del); save(); renderAround(); toast("Lieu supprimé"); return; }
@@ -845,12 +924,6 @@ document.addEventListener("click", e => {
       S.family.contacts.push({name, tel}); save(); renderFamily(); renderHome(); toast("Proche ajouté");
       break;
     }
-    case "map-dl":
-      downloadMap();
-      break;
-    case "map-del":
-      deleteMap();
-      break;
     case "stop-guide":
       stopGuide();
       break;
@@ -886,9 +959,13 @@ document.addEventListener("click", e => {
 
 renderAll();
 show(location.hash.slice(1));
-refreshMapPanel();
-storedMap().then(b => { if(b) initMap(b); });
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(() => {}); }
+initZones();
+if("serviceWorker" in navigator){
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if(hadController && !reloaded && !busy){ reloaded = true; location.reload(); } });
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
 })();
 </script>
 </body>

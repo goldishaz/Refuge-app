@@ -1,6 +1,6 @@
 /* Refuge : fonctionnement hors ligne de l’appli.
    La carte (carte.pmtiles) est enregistrée à part, par le bouton « Télécharger la carte ». */
-const VERSION = "refuge-app-v1";
+const VERSION = "refuge-app-v2";
 const SHELL = [
   "./",
   "assets/fonts/Noto%20Sans%20Italic/0-255.pbf",
@@ -48,7 +48,7 @@ self.addEventListener("fetch", e => {
   if(req.method !== "GET") return;
   const url = new URL(req.url);
   if(url.origin !== location.origin) return;
-  if(url.pathname.endsWith("carte.pmtiles")) return; // téléchargement de la carte : toujours depuis le réseau
+  if(url.pathname.endsWith(".pmtiles")) return; // téléchargement de la carte : toujours depuis le réseau
   if(url.pathname.includes("/assets/fonts/")){
     // Une plage de caractères absente ne doit pas bloquer l’affichage de la carte
     e.respondWith(caches.match(req).then(r => r || fetch(req).then(res => res.ok ? res : new Response(new ArrayBuffer(0))).catch(() => new Response(new ArrayBuffer(0)))));
