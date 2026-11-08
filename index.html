@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Refuge – appli d’urgence</title>
+<meta name="theme-color" content="#D9480F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Refuge">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<style>
+@font-face{font-family:"Atkinson Hyperlegible";src:url(fonts/atkinson-400.woff2) format("woff2");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:"Atkinson Hyperlegible";src:url(fonts/atkinson-700.woff2) format("woff2");font-weight:700;font-style:normal;font-display:swap}
+.mapwrap{border-radius:16px;overflow:hidden;border:1px solid var(--line);margin-bottom:12px;height:min(62vh,540px);background:var(--surface-2)}
+#map{width:100%;height:100%}
+.mpin{width:30px;height:30px;border-radius:50%;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:"Atkinson Hyperlegible",system-ui,sans-serif}
+.maplibregl-popup-content{color:#13202F;font-family:"Atkinson Hyperlegible",system-ui,sans-serif;font-size:15px;padding:12px 14px}
+.maplibregl-popup-content .btn{background:#13202F;color:#fff}
+:root{
+  --bg:#E9EDF1; --surface:#FFFFFF; --surface-2:#DDE3EA; --ink:#13202F; --muted:#556476; --line:#C9D2DC;
+  --signal:#D9480F; --signal-ink:#FFFFFF; --safe:#24794F; --blue:#2457A6; --warn:#A86300;
+  color-scheme:light; box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E151E; --surface:#17212D; --surface-2:#223040; --ink:#E8EEF4; --muted:#9AA9B9; --line:#2E3D4F;
+    --signal:#FF6B35; --signal-ink:#1A0E07; --safe:#4FC58A; --blue:#7FA8F0; --warn:#F2B04B; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E151E; --surface:#17212D; --surface-2:#223040; --ink:#E8EEF4; --muted:#9AA9B9; --line:#2E3D4F;
+  --signal:#FF6B35; --signal-ink:#1A0E07; --safe:#4FC58A; --blue:#7FA8F0; --warn:#F2B04B; color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:17px;line-height:1.5}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+h1,h2,h3{margin:0;font-weight:700;line-height:1.2}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+a{color:inherit}
+
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);max-width:520px;margin:0 auto;padding:14px 20px 10px;display:flex;align-items:center;justify-content:space-between}
+.brand{font-size:1.5rem;font-weight:700;display:flex;align-items:center;gap:10px}
+.brand .mark{width:26px;height:26px;border-radius:7px;background:var(--signal);position:relative}
+.brand .mark::before,.brand .mark::after{content:"";position:absolute;background:var(--signal-ink);border-radius:2px}
+.brand .mark::before{left:11px;top:5px;width:4px;height:16px}
+.brand .mark::after{left:5px;top:11px;width:16px;height:4px}
+.offline{font-size:.8125rem;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted)}
+.offline.off{color:var(--warn);border-color:var(--warn)}
+main{max-width:520px;margin:0 auto;padding:4px 20px 112px}
+.view{display:none}.view.on{display:block}
+.page{font-size:1.75rem;margin:6px 0 4px}
+.lead{color:var(--muted);margin:0 0 18px}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+.panel h2{font-size:1.1875rem;margin-bottom:10px}
+.sos{display:block;width:100%;border:0;border-radius:20px;background:var(--signal);color:var(--signal-ink);padding:22px 18px;text-align:left;margin-bottom:14px}
+.sos strong{display:block;font-size:1.75rem}
+.sos span{opacity:.9}
+.coords{font-size:1.625rem;font-weight:700;letter-spacing:.01em;margin:6px 0;word-break:break-word}
+.calls{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px}
+.calls a{display:block;text-decoration:none;background:var(--surface-2);border-radius:12px;padding:10px 12px}
+.calls a b{display:block;font-size:1.375rem}
+.calls a small{color:var(--muted)}
+.btn{display:inline-block;border:0;border-radius:12px;padding:12px 16px;background:var(--ink);color:var(--surface);font-weight:700}
+.btn.full{display:block;width:100%}
+.btn.safe{background:var(--safe);color:#fff}
+.btn.line{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.small{padding:8px 12px;font-size:.9375rem}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+details{border-top:1px solid var(--line);padding:12px 0}
+details:first-of-type{border-top:0;padding-top:0}
+summary{font-weight:700;cursor:pointer;list-style-position:outside}
+details ul{margin:8px 0 0;padding-left:20px}
+details li{margin:4px 0}
+.note{font-size:.875rem;color:var(--muted);margin:10px 0 0}
+.meter{height:10px;border-radius:999px;background:var(--surface-2);overflow:hidden;margin:8px 0}
+.meter span{display:block;height:100%;background:var(--safe)}
+
+/* Autour de moi */
+.radar-wrap{position:relative}
+.radar svg{width:100%;height:auto;display:block}
+.cats{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px}
+.cats button{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:.875rem}
+.cats button[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.place{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}
+.place:first-child{border-top:0;padding-top:0}
+.pin{flex:none;width:30px;height:30px;border-radius:50%;color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:.875rem}
+.place .d{color:var(--muted);font-size:.9375rem}
+.place .x{margin-left:auto;border:0;background:none;color:var(--muted);font-size:.875rem;padding:4px}
+label{display:block;font-weight:700;margin:10px 0 4px}
+input[type=text],input[type=tel],input[type=date],input[type=number],select,textarea{width:100%;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);padding:10px 12px}
+textarea{min-height:76px;resize:vertical}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.msg{font-size:.9375rem;color:var(--warn);margin:8px 0 0}
+
+/* Kit */
+.kit-item{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.kit-item:first-child{border-top:0}
+.kit-item input[type=checkbox]{width:24px;height:24px;accent-color:var(--safe);flex:none}
+.kit-item .t{flex:1}
+.kit-item .exp{width:9.5rem;flex:none;padding:6px 8px;font-size:.875rem}
+.late{color:var(--signal);font-size:.8125rem;display:block}
+
+/* Entraide */
+.tabs2{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px}
+.tabs2 button{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 4px;font-size:.875rem}
+.tabs2 button[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.post{padding:12px 0;border-top:1px solid var(--line)}
+.post:first-child{border-top:0;padding-top:0}
+.kind{display:inline-block;font-size:.8125rem;font-weight:700;padding:2px 8px;border-radius:6px;margin-bottom:4px}
+.k-offre{background:color-mix(in srgb,var(--safe) 18%,transparent);color:var(--safe)}
+.k-besoin{background:color-mix(in srgb,var(--blue) 18%,transparent);color:var(--blue)}
+.k-aide{background:color-mix(in srgb,var(--signal) 18%,transparent);color:var(--signal)}
+.post p{margin:2px 0}
+.post small{color:var(--muted)}
+.banner{border-left:4px solid var(--warn);background:var(--surface);padding:10px 12px;border-radius:8px;font-size:.9375rem;margin-bottom:12px}
+
+/* Navigation */
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+.nav-in{max-width:520px;margin:0 auto;display:grid;grid-template-columns:repeat(6,1fr)}
+.member{border-top:1px solid var(--line);padding:12px 0}
+.member:first-child{border-top:0;padding-top:0}
+.member dl{margin:6px 0 0;display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:.9375rem}
+.member dt{color:var(--muted)}
+.member dd{margin:0}
+.step{margin:6px 0}
+.call-first{border-left:4px solid var(--signal);padding:8px 12px;background:var(--surface-2);border-radius:8px;margin:8px 0}
+.nav button{border:0;background:none;padding:9px 2px 7px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:.75rem;color:var(--muted)}
+.nav svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.nav button[aria-current="page"]{color:var(--signal);font-weight:700}
+.toast{position:fixed;left:50%;bottom:calc(80px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);opacity:0;background:var(--ink);color:var(--surface);padding:12px 16px;border-radius:12px;max-width:min(440px,calc(100% - 40px));transition:opacity .2s;pointer-events:none;z-index:8;font-size:.9375rem}
+.toast.on{opacity:1}
+.guide{position:fixed;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:calc(24px + env(safe-area-inset-top,0px)) 24px calc(24px + env(safe-area-inset-bottom,0px))}
+.guide[hidden]{display:none}
+.guide h2{font-size:1.375rem;max-width:22ch}
+.guide .arrow{width:min(230px,62vw);height:auto;transition:transform .3s ease-out}
+.guide .gd{font-size:2.75rem;font-weight:700;line-height:1}
+.guide p{margin:0;max-width:34ch}
+@media (prefers-reduced-motion:reduce){.guide .arrow{transition:none}}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="mark" aria-hidden="true"></span>Refuge</div>
+  <span class="offline" id="net"></span>
+</header>
+
+<main>
+  <section class="view" id="v-accueil"></section>
+  <section class="view" id="v-autour">
+    <h1 class="page">Autour de moi</h1>
+    <p class="lead">La carte, tes lieux d’urgence et tes points de rencontre, même sans réseau.</p>
+    <div class="mapwrap" id="mapwrap" hidden><div id="map"></div></div>
+    <div class="panel" id="map-panel">
+      <p id="map-status" style="margin:0"></p>
+      <div class="meter" id="map-meter" hidden><span id="map-bar" style="width:0"></span></div>
+      <div class="row" style="margin-top:10px"><button class="btn small" data-act="map-dl" id="map-dl">Télécharger la carte</button><button class="btn line small" data-act="map-del" id="map-del" hidden>Supprimer la carte</button></div>
+      <p class="msg" id="map-err"></p>
+    </div>
+    <div id="autour-dyn"></div>
+  </section>
+  <section class="view" id="v-secours"></section>
+  <section class="view" id="v-kit"></section>
+  <section class="view" id="v-entraide"></section>
+  <section class="view" id="v-famille"></section>
+</main>
+
+<nav class="nav" aria-label="Navigation">
+  <div class="nav-in">
+    <button data-go="accueil"><svg viewBox="0 0 24 24"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/></svg>Urgence</button>
+    <button data-go="autour"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></svg>Autour</button>
+    <button data-go="secours"><svg viewBox="0 0 24 24"><path d="M12 21s-8-5-8-11a4.5 4.5 0 018-2.8A4.5 4.5 0 0120 10c0 6-8 11-8 11z"/><path d="M12 10v5M9.5 12.5h5"/></svg>Secours</button>
+    <button data-go="kit"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V4h6v3M12 11v5M9.5 13.5h5"/></svg>Kit 72 h</button>
+    <button data-go="entraide"><svg viewBox="0 0 24 24"><path d="M7 12l3-3 4 4 3-3"/><path d="M2 12l5-5 3 2M22 12l-5-5-3 2M7 12l5 5 5-5"/></svg>Entraide</button>
+    <button data-go="famille"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9H3z"/><path d="M10 20v-5h4v5"/></svg>Famille</button>
+  </div>
+</nav>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="guide" id="guide" hidden role="dialog" aria-modal="true" aria-labelledby="g-name">
+  <p class="note" style="margin:0">Guidage vers</p>
+  <h2 id="g-name"></h2>
+  <svg class="arrow" id="g-arrow" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" fill="var(--surface)" stroke="var(--line)" stroke-width="2"/><path d="M50 10 L73 72 L50 59 L27 72 Z" fill="var(--signal)"/></svg>
+  <div class="gd" id="g-dist" aria-live="polite"></div>
+  <p id="g-dir" style="font-weight:700"></p>
+  <p id="g-info" class="note"></p>
+  <button class="btn" data-act="stop-guide" style="margin-top:10px">Arrêter le guidage</button>
+</div>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/pmtiles.js"></script>
+<script src="vendor/basemaps.js"></script>
+<script>
+(function(){
+const KEY = "refuge-v1";
+const VIEWS = ["accueil","autour","secours","kit","entraide","famille"];
+const CATS = [
+  {id:"hopital", name:"Hôpital, urgences", c:"#C62828", l:"H"},
+  {id:"medecin", name:"Médecin, clinique", c:"#AD1457", l:"M"},
+  {id:"pharma", name:"Pharmacie", c:"#2E7D32", l:"P"},
+  {id:"veto", name:"Vétérinaire", c:"#6A4C93", l:"V"},
+  {id:"dae", name:"Défibrillateur", c:"#E65100", l:"D"},
+  {id:"eau", name:"Point d’eau", c:"#1565C0", l:"E"},
+  {id:"accueil", name:"Mairie, centre d’accueil", c:"#37474F", l:"A"},
+  {id:"rdv", name:"Point de rencontre", c:"#3949AB", l:"R"},
+  {id:"abri", name:"Abri, refuge, hébergement", c:"#8E24AA", l:"B"},
+  {id:"carburant", name:"Station-service, carburant", c:"#5D4037", l:"S"},
+  {id:"ravito", name:"Ravitaillement, distribution", c:"#8D6E00", l:"R"},
+  {id:"recharge", name:"Recharge de téléphone", c:"#00838F", l:"C"},
+  {id:"autre", name:"Autre lieu utile", c:"#5D6B7A", l:"•"}
+];
+const KIT = [
+  {id:"eau", t:"Eau potable pour chaque personne du foyer"},
+  {id:"nourriture", t:"Nourriture non périssable (conserves, biscuits)"},
+  {id:"radio", t:"Radio à piles et piles de rechange"},
+  {id:"lampe", t:"Lampe de poche et piles"},
+  {id:"medic", t:"Médicaments et traitements habituels"},
+  {id:"secours", t:"Trousse de premiers secours"},
+  {id:"argent", t:"Argent liquide (petites coupures)"},
+  {id:"papiers", t:"Copies des papiers importants"},
+  {id:"batterie", t:"Batterie externe chargée"},
+  {id:"outils", t:"Couteau multifonction et outils de base"},
+  {id:"chaud", t:"Vêtements chauds et couverture de survie"},
+  {id:"sifflet", t:"Sifflet pour signaler sa présence"},
+  {id:"cles", t:"Double des clés"},
+  {id:"pastilles", t:"Pastilles pour purifier l’eau"},
+  {id:"animaux", t:"Nourriture et affaires des animaux"}
+];
+const POST_TYPES = {offre:"Je propose", besoin:"Je cherche", aide:"Demande d’aide"};
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtKm = d => d < 1 ? Math.round(d*1000/10)*10 + " m" : (Math.round(d*10)/10).toString().replace(".", ",") + " km";
+const nowTxt = () => new Date().toLocaleString("fr-FR",{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+const todayISO = () => new Date().toISOString().slice(0,10);
+
+function fresh(){
+  return {
+    places:[],
+    kit:{},
+    posts:[
+      {id:1,type:"offre",text:"Exemple : je peux recharger 3 téléphones par jour avec mon panneau solaire.",place:"Devant la mairie, 10 h à 12 h",time:"exemple",ex:true},
+      {id:2,type:"besoin",text:"Exemple : je cherche des piles AA pour ma radio, j’échange contre du riz.",place:"Parvis de l’église",time:"exemple",ex:true},
+      {id:3,type:"aide",text:"Exemple : personne âgée au 3e étage sans ascenseur, besoin d’eau. Dépôt devant la porte.",place:"Contact par le gardien",time:"exemple",ex:true}
+    ],
+    family:{contacts:[], members:[], meet:"", meet2:"", medical:"", pets:""},
+    pos:null
+  };
+}
+let S;
+try{ const r = localStorage.getItem(KEY); S = r ? Object.assign(fresh(), JSON.parse(r)) : fresh(); }catch(e){ S = fresh(); }
+if(!S.family.members) S.family.members = [];
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
+function memberCard(m, i, withDelete){
+  const rows = [["Âge",m.age],["Maladies chroniques",m.chronic],["Traitements",m.treat],["Allergies",m.allergy],["Appareils",m.devices],["Soins particuliers",m.care],["Médecin",m.doctor]].filter(r => r[1]);
+  return `<div class="member"><div class="row" style="justify-content:space-between"><strong style="font-size:1.125rem">${esc(m.name)}</strong>${withDelete ? `<button class="x" style="border:0;background:none;color:var(--muted);font-size:.875rem" data-delm="${i}">Supprimer</button>` : ""}</div>${rows.length ? `<dl>${rows.map(r => `<dt>${r[0]}</dt><dd>${esc(r[1])}</dd>`).join("")}</dl>` : ""}</div>`;
+}
+
+function toast(m){ const t = document.getElementById("toast"); t.textContent = m; t.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), 2800); }
+function netStatus(){
+  const n = document.getElementById("net");
+  const on = navigator.onLine;
+  n.textContent = on ? "Réseau disponible" : "Hors réseau";
+  n.classList.toggle("off", !on);
+}
+window.addEventListener("online", netStatus); window.addEventListener("offline", netStatus);
+
+/* ---------- Position ---------- */
+function locate(cb){
+  if(!("geolocation" in navigator)){ cb("Ce téléphone ne permet pas la localisation ici. Saisis tes coordonnées à la main."); return; }
+  navigator.geolocation.getCurrentPosition(p => {
+    S.pos = {lat:p.coords.latitude, lng:p.coords.longitude, acc:Math.round(p.coords.accuracy), t:nowTxt()};
+    save(); cb(null);
+  }, err => {
+    cb(err.code === 1 ? "Localisation refusée. Autorise-la dans les réglages du navigateur, ou saisis tes coordonnées à la main." : "Position introuvable pour l’instant. Va près d’une fenêtre ou à l’extérieur, puis réessaie.");
+  }, {enableHighAccuracy:true, timeout:20000, maximumAge:60000});
+}
+function dist(a,b){
+  const R = 6371, rad = x => x*Math.PI/180;
+  const dLat = rad(b.lat-a.lat), dLng = rad(b.lng-a.lng);
+  const h = Math.sin(dLat/2)**2 + Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+function bearing(a,b){
+  const rad = x => x*Math.PI/180;
+  const y = Math.sin(rad(b.lng-a.lng))*Math.cos(rad(b.lat));
+  const x = Math.cos(rad(a.lat))*Math.sin(rad(b.lat)) - Math.sin(rad(a.lat))*Math.cos(rad(b.lat))*Math.cos(rad(b.lng-a.lng));
+  return (Math.atan2(y,x)*180/Math.PI + 360) % 360;
+}
+const DIRS = ["au nord","au nord-est","à l’est","au sud-est","au sud","au sud-ouest","à l’ouest","au nord-ouest"];
+const dirTxt = b => DIRS[Math.round(b/45) % 8];
+
+/* ---------- Urgence ---------- */
+function renderHome(){
+  const p = S.pos;
+  const done = KIT.filter(k => S.kit[k.id] && S.kit[k.id].ok).length;
+  const fam = S.family.contacts.filter(c => c.tel);
+  const okMsg = `Je vais bien. ${p ? `Ma position : ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}. ` : ""}Message envoyé le ${nowTxt()}.`;
+  document.getElementById("v-accueil").innerHTML = `
+    <h1 class="page">En cas d’urgence</h1>
+    <p class="lead">Tout ce qu’il faut, même sans réseau.</p>
+    <button class="sos" data-act="sos"><strong>SOS : ma position</strong><span>Affiche tes coordonnées à donner aux secours</span></button>
+    <div class="panel" id="sos-panel" ${p ? "" : "hidden"}>
+      <h2>Ma position</h2>
+      ${p ? `<div class="coords">${p.lat.toFixed(5)}<br>${p.lng.toFixed(5)}</div><p class="note" style="margin-top:0">Précision environ ${p.acc} m, relevée le ${esc(p.t)}. Lis ces deux nombres aux secours.</p>` : ""}
+      <div class="calls">
+        <a href="tel:112"><b>112</b><small>Urgences en Europe</small></a>
+        <a href="tel:15"><b>15</b><small>Samu, urgence médicale</small></a>
+        <a href="tel:18"><b>18</b><small>Pompiers</small></a>
+        <a href="tel:17"><b>17</b><small>Police, gendarmerie</small></a>
+        <a href="sms:114"><b>114</b><small>Par SMS, si tu ne peux pas parler</small></a>
+        <a href="tel:3114"><b>3114</b><small>Détresse, idées suicidaires</small></a>
+      </div>
+      <p class="msg" id="sos-err"></p>
+    </div>
+
+    ${S.family.members.length ? `<div class="panel"><h2>Fiches santé à montrer aux secours</h2>${S.family.members.map((m,i) => memberCard(m,i,false)).join("")}</div>` : ""}
+
+    <button class="btn line full" data-go="secours" style="margin-bottom:14px">Quelqu’un est blessé ou fait un malaise : que faire ?</button>
+
+    <div class="panel">
+      <h2>Prévenir mes proches</h2>
+      <p style="margin:0 0 10px">Un SMS passe souvent quand internet ne passe plus.</p>
+      <textarea id="okmsg" aria-label="Message à envoyer">${esc(okMsg)}</textarea>
+      <div class="row" style="margin-top:10px">
+        ${fam.length ? fam.map((c,i) => `<a class="btn safe small" data-sms="${i}" href="#">Envoyer à ${esc(c.name || c.tel)}</a>`).join("") : `<button class="btn line small" data-go="famille">Ajouter mes proches</button>`}
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Les bons réflexes</h2>
+      <details><summary>Alerte, sirène, danger dehors</summary><ul>
+        <li>Rejoins un bâtiment et restes-y.</li>
+        <li>Ferme portes et fenêtres.</li>
+        <li>Écoute la radio pour suivre les consignes des autorités.</li>
+        <li>Ne va pas chercher les enfants à l’école : l’école s’occupe d’eux.</li>
+        <li>Ne téléphone qu’en cas d’urgence, pour laisser le réseau aux secours.</li>
+      </ul></details>
+      <details><summary>Coupure d’électricité</summary><ul>
+        <li>Débranche les appareils fragiles pour le retour du courant.</li>
+        <li>Garde le réfrigérateur et le congélateur fermés.</li>
+        <li>Préfère une lampe aux bougies (risque d’incendie).</li>
+        <li>Jamais de groupe électrogène, de barbecue ou de chauffage d’appoint à combustible à l’intérieur : risque de monoxyde de carbone.</li>
+      </ul></details>
+      <details><summary>Coupure d’eau</summary><ul>
+        <li>Garde l’eau en bouteille pour boire et cuisiner.</li>
+        <li>En cas de doute sur une eau, fais-la bouillir ou utilise des pastilles de purification.</li>
+        <li>Remplis baignoire et seaux à l’avance si une coupure est annoncée, pour les toilettes et le ménage.</li>
+      </ul></details>
+      <details><summary>Inondation</summary><ul>
+        <li>Monte en hauteur, à l’étage.</li>
+        <li>Ne descends ni à la cave ni au parking souterrain.</li>
+        <li>Ne prends pas ta voiture et ne traverse pas une zone inondée, même à pied.</li>
+      </ul></details>
+      <details><summary>Économiser la batterie</summary><ul>
+        <li>Baisse la luminosité et active le mode économie d’énergie.</li>
+        <li>Passe en mode avion quand tu n’as pas besoin du téléphone : le GPS peut rester actif.</li>
+        <li>Garde la batterie externe pour les messages importants.</li>
+      </ul></details>
+      <p class="note">Repères tirés des recommandations officielles (guide « Tous responsables »). En situation réelle, suis toujours les consignes des autorités à la radio.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Mon kit 72 h</h2>
+      <div class="meter"><span style="width:${Math.round(done/KIT.length*100)}%"></span></div>
+      <p style="margin:0 0 10px">${done} élément${done>1?"s":""} prêt${done>1?"s":""} sur ${KIT.length}.</p>
+      <button class="btn line small" data-go="kit">Compléter mon kit</button>
+    </div>`;
+}
+
+/* ---------- Autour de moi ---------- */
+let catFilter = "tout", prefill = null;
+function renderAround(){ renderAroundInner(); drawMarkers(); }
+function renderAroundInner(){
+  const pf = prefill || {}; prefill = null;
+  const p = S.pos;
+  let list = S.places.map(pl => p ? Object.assign({}, pl, {d:dist(p,pl), b:bearing(p,pl)}) : pl);
+  if(catFilter !== "tout") list = list.filter(x => x.cat === catFilter);
+  if(p) list.sort((a,b) => a.d - b.d);
+  const catOf = id => CATS.find(c => c.id === id) || CATS[CATS.length-1];
+
+  let radar = "";
+  if(p && !map){
+    const maxD = Math.max(0.5, ...list.map(x => x.d).filter(d => d <= 30));
+    const nice = [0.5,1,2,3,5,10,20,30].find(v => v >= maxD) || 30;
+    const C = 160, R = 140;
+    let g = `<circle cx="${C}" cy="${C}" r="${R}" fill="var(--surface-2)" stroke="var(--line)"/>`;
+    [1/3,2/3].forEach(f => g += `<circle cx="${C}" cy="${C}" r="${R*f}" fill="none" stroke="var(--line)" stroke-dasharray="3 4"/>`);
+    g += `<line x1="${C}" y1="${C-R}" x2="${C}" y2="${C+R}" stroke="var(--line)"/><line x1="${C-R}" y1="${C}" x2="${C+R}" y2="${C}" stroke="var(--line)"/>`;
+    g += `<text x="${C}" y="${C-R-6}" text-anchor="middle" font-size="13" font-weight="700" fill="var(--muted)">N</text>`;
+    g += `<text x="${C+R*2/3+4}" y="${C-4}" font-size="11" fill="var(--muted)">${fmtKm(nice*2/3)}</text><text x="${C+R+2}" y="${C-4}" font-size="11" fill="var(--muted)" text-anchor="end">${fmtKm(nice)}</text>`;
+    list.forEach((x,i) => {
+      if(x.d > nice) return;
+      const r = x.d/nice*R, a = (x.b-90)*Math.PI/180;
+      const cx = C + r*Math.cos(a), cy = C + r*Math.sin(a), cat = catOf(x.cat);
+      g += `<circle cx="${cx}" cy="${cy}" r="11" fill="${cat.c}" stroke="var(--surface)" stroke-width="2"/><text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">${i+1}</text>`;
+    });
+    g += `<circle cx="${C}" cy="${C}" r="8" fill="var(--signal)" stroke="var(--surface)" stroke-width="3"/>`;
+    radar = `<div class="panel radar"><svg viewBox="0 0 320 330" role="img" aria-label="Lieux enregistrés autour de ta position">${g}</svg><p class="note" style="text-align:center;margin-top:4px">Le point orange, c’est toi. Le nord est en haut.</p></div>`;
+  }
+
+  document.getElementById("autour-dyn").innerHTML = `
+    <div class="panel">
+      ${p ? `<p style="margin:0">Position relevée le ${esc(p.t)}.</p>` : `<p style="margin:0">Active ta position pour voir les distances et la direction de chaque lieu.</p>`}
+      <div class="row" style="margin-top:10px"><button class="btn small" data-act="locate">${p ? "Mettre à jour ma position" : "Trouver ma position"}</button></div>
+      <p class="msg" id="loc-err"></p>
+    </div>
+    ${radar}
+    <div class="cats" role="group" aria-label="Filtrer par type">
+      <button data-cat="tout" aria-pressed="${catFilter==="tout"}">Tout</button>
+      ${CATS.map(c => `<button data-cat="${c.id}" aria-pressed="${catFilter===c.id}">${c.name}</button>`).join("")}
+    </div>
+    <div class="panel">
+      <h2>Mes lieux</h2>
+      ${list.length ? list.map((x,i) => { const cat = catOf(x.cat); return `
+        <div class="place"><span class="pin" style="background:${cat.c}">${p ? i+1 : cat.l}</span>
+          <div><strong>${esc(x.name)}</strong><div class="d">${cat.name}${p ? `, à ${fmtKm(x.d)} ${dirTxt(x.b)}` : ""}</div>${x.note ? `<div class="d">${esc(x.note)}</div>` : ""}</div>
+          <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none"><button class="btn small" data-guide="${x.id}">Guide-moi</button><button class="x" data-del="${x.id}" aria-label="Supprimer ${esc(x.name)}">Supprimer</button></div></div>`; }).join("")
+        : `<p style="margin:0">Aucun lieu pour l’instant. Ajoute dès maintenant, tant que tu as du réseau, l’hôpital, la pharmacie, le vétérinaire et la mairie les plus proches, ainsi que tes points de rencontre avec ta famille.</p>`}
+    </div>
+    <div class="panel">
+      <h2>Ajouter un lieu</h2>
+      <label for="pl-name">Nom</label><input type="text" id="pl-name" value="${esc(pf.name||"")}" placeholder="Ex. Pharmacie de la gare">
+      <label for="pl-cat">Type</label><select id="pl-cat">${CATS.map(c => `<option value="${c.id}" ${pf.cat===c.id?"selected":""}>${c.name}</option>`).join("")}</select>
+      <label for="pl-note">Infos utiles</label><input type="text" id="pl-note" placeholder="Horaires, téléphone, ouvert 24 h/24…">
+      <label>Emplacement</label>
+      <div class="two"><input type="number" step="any" id="pl-lat" placeholder="Latitude" aria-label="Latitude"><input type="number" step="any" id="pl-lng" placeholder="Longitude" aria-label="Longitude"></div>
+      <div class="row" style="margin-top:10px"><button class="btn line small" data-act="here">Je suis sur place</button><button class="btn small" data-act="add-place">Ajouter ce lieu</button></div>
+      <p class="note">Astuce : touche la carte à l’endroit voulu, l’emplacement se remplit tout seul.</p>
+      <p class="note">Abris : en cas de crise, la mairie annonce les lieux d’accueil officiels (gymnases, salles municipales). Note dès maintenant ceux qu’elle prévoit. Carburant : précise dans les infos si la station est ouverte 24 h/24 ou dispose d’un groupe électrogène, car sans courant, beaucoup de pompes s’arrêtent.</p>
+      <p class="msg" id="pl-err"></p>
+    </div>`;
+}
+
+/* ---------- Guidage boussole ---------- */
+const guide = {t:null, watch:null, heading:null};
+function onOrient(e){
+  let h = null;
+  if(typeof e.webkitCompassHeading === "number") h = e.webkitCompassHeading;
+  else if(e.absolute && typeof e.alpha === "number") h = (360 - e.alpha) % 360;
+  if(h !== null){ guide.heading = h; updateGuide(); }
+}
+function startGuide(id){
+  const pl = S.places.find(p => p.id === id); if(!pl) return;
+  guide.t = pl; guide.heading = null;
+  document.getElementById("g-name").textContent = pl.name;
+  document.getElementById("guide").hidden = false;
+  try{
+    if(typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function"){
+      DeviceOrientationEvent.requestPermission().then(r => { if(r === "granted") window.addEventListener("deviceorientation", onOrient); }).catch(() => {});
+    } else {
+      window.addEventListener("deviceorientationabsolute", onOrient);
+      window.addEventListener("deviceorientation", onOrient);
+    }
+  }catch(e){}
+  if("geolocation" in navigator){
+    guide.watch = navigator.geolocation.watchPosition(p => {
+      S.pos = {lat:p.coords.latitude, lng:p.coords.longitude, acc:Math.round(p.coords.accuracy), t:nowTxt()};
+      updateGuide();
+    }, err => {
+      document.getElementById("g-info").textContent = err.code === 1 ? "Localisation refusée : autorise-la dans les réglages pour être guidé." : "Position introuvable pour l’instant. Va à l’extérieur ou près d’une fenêtre.";
+    }, {enableHighAccuracy:true, maximumAge:5000, timeout:30000});
+  }
+  updateGuide();
+}
+function updateGuide(){
+  const t = guide.t; if(!t) return;
+  const p = S.pos, dEl = document.getElementById("g-dist"), dirEl = document.getElementById("g-dir"), info = document.getElementById("g-info");
+  if(!p){ dEl.textContent = "…"; dirEl.textContent = ""; info.textContent = "Recherche de ta position…"; return; }
+  const d = dist(p,t), b = bearing(p,t);
+  const rot = guide.heading !== null ? b - guide.heading : b;
+  document.getElementById("g-arrow").style.transform = `rotate(${rot}deg)`;
+  if(d < 0.03){ dEl.textContent = "Tu es arrivé"; dirEl.textContent = ""; }
+  else { dEl.textContent = fmtKm(d); dirEl.textContent = `Le lieu est ${dirTxt(b)}.`; }
+  info.textContent = (guide.heading !== null ? "La flèche suit ta boussole : marche dans sa direction." : "Boussole non détectée : tiens le haut du téléphone vers le nord, la flèche montre alors la direction.") + ` Précision environ ${p.acc} m.`;
+}
+function stopGuide(){
+  if(guide.watch !== null && "geolocation" in navigator) navigator.geolocation.clearWatch(guide.watch);
+  guide.watch = null; guide.t = null;
+  window.removeEventListener("deviceorientation", onOrient);
+  window.removeEventListener("deviceorientationabsolute", onOrient);
+  document.getElementById("guide").hidden = true;
+  save(); renderAround(); renderHome();
+}
+
+/* ---------- Secours ---------- */
+function renderSecours(){
+  document.getElementById("v-secours").innerHTML = `
+    <h1 class="page">Gestes qui sauvent</h1>
+    <p class="lead">Quoi faire, étape par étape, en attendant les secours.</p>
+    <div class="panel">
+      <h2>Toujours dans cet ordre</h2>
+      <p class="step"><strong>Protéger :</strong> écarte le danger (circulation, feu, courant électrique) sans te mettre en danger.</p>
+      <p class="step"><strong>Alerter :</strong> appelle le 15 ou le 112, mets le haut-parleur, donne l’adresse ou ta position SOS.</p>
+      <p class="step"><strong>Secourir :</strong> fais les gestes ci-dessous jusqu’à l’arrivée des secours.</p>
+      <div class="row" style="margin-top:10px"><a class="btn small" href="tel:15" style="text-decoration:none;background:var(--signal);color:var(--signal-ink)">Appeler le 15</a><a class="btn line small" href="tel:112" style="text-decoration:none">Appeler le 112</a></div>
+    </div>
+    <div class="panel">
+      <details><summary>Ne répond pas et ne respire pas : arrêt cardiaque</summary>
+        <div class="call-first">Appelle immédiatement le 15 ou le 112. Demande à quelqu’un d’aller chercher un défibrillateur.</div>
+        <ul>
+          <li>Allonge la personne sur le dos, sur un sol dur.</li>
+          <li>Mains l’une sur l’autre au centre de la poitrine, bras tendus.</li>
+          <li>Enfonce de 5 à 6 cm, environ 2 fois par seconde (100 à 120 par minute).</li>
+          <li>Ne t’arrête pas jusqu’à l’arrivée des secours. Relaie-toi si possible.</li>
+          <li>Dès que le défibrillateur arrive, allume-le et suis ses instructions vocales.</li>
+        </ul></details>
+      <details><summary>Inconsciente mais respire : position latérale de sécurité</summary><ul>
+          <li>Vérifie qu’elle respire (le ventre ou la poitrine se soulève).</li>
+          <li>Tourne-la sur le côté, la tête basculée en arrière, la bouche vers le sol.</li>
+          <li>Alerte les secours et vérifie sa respiration en continu. Si elle s’arrête, commence le massage cardiaque.</li>
+        </ul></details>
+      <details><summary>Saigne abondamment</summary><ul>
+          <li>Appuie fort et sans relâcher sur la plaie, avec un tissu propre ou ta main protégée (gant, sac plastique).</li>
+          <li>Allonge la personne et alerte les secours.</li>
+          <li>Garde l’appui jusqu’à leur arrivée. Si l’appui est impossible ou inefficace sur un bras ou une jambe, un garrot peut être posé au-dessus de la plaie.</li>
+        </ul></details>
+      <details><summary>S’étouffe et ne peut ni parler ni tousser</summary><ul>
+          <li>Adulte ou enfant : penche-le en avant et donne jusqu’à 5 claques fermes dans le dos, entre les omoplates.</li>
+          <li>Si ça ne marche pas : place-toi derrière lui, poing fermé au-dessus du nombril, et tire fort vers toi et vers le haut, jusqu’à 5 fois.</li>
+          <li>Alterne les deux jusqu’à ce que l’objet sorte.</li>
+          <li>Nourrisson : à plat ventre sur ton avant-bras, tête plus basse, 5 claques dans le dos, puis sur le dos, 5 appuis sur le milieu de la poitrine avec deux doigts.</li>
+          <li>S’il perd connaissance : alerte et commence le massage cardiaque.</li>
+        </ul></details>
+      <details><summary>Brûlure</summary><ul>
+          <li>Refroidis tout de suite sous l’eau tempérée pendant au moins 10 à 20 minutes.</li>
+          <li>Ne retire pas un vêtement collé à la peau, ne mets ni crème ni corps gras.</li>
+          <li>Appelle le 15 si la brûlure est plus grande que la paume de la victime, touche le visage, les mains ou les parties intimes, concerne un enfant, ou est électrique ou chimique.</li>
+        </ul></details>
+      <details><summary>Malaise</summary><ul>
+          <li>Mets la personne au repos, allongée ou assise selon ce qu’elle préfère.</li>
+          <li>Demande-lui ce qu’elle ressent et si elle a une maladie ou un traitement (regarde sa fiche santé).</li>
+          <li>Personne diabétique consciente qui peut avaler : donne-lui du sucre.</li>
+          <li>Appelle le 15 tout de suite en cas de douleur dans la poitrine, ou si le visage se déforme, un bras faiblit ou la parole devient difficile : c’est peut-être un AVC, chaque minute compte.</li>
+        </ul></details>
+      <details><summary>Froid, grande fatigue (coupure de chauffage)</summary><ul>
+          <li>Mets la personne à l’abri du froid, retire les vêtements mouillés, couvre-la avec une couverture de survie ou plusieurs couches, sans oublier la tête.</li>
+          <li>Boisson chaude et sucrée si elle est consciente. Jamais d’alcool.</li>
+          <li>Appelle les secours si elle devient confuse, somnolente ou ne frissonne plus.</li>
+        </ul></details>
+      <details><summary>Maux de tête et nausées chez plusieurs personnes : monoxyde de carbone</summary><ul>
+          <li>Ouvre portes et fenêtres, arrête les appareils à combustion, sors du logement.</li>
+          <li>Appelle le 18 ou le 112.</li>
+        </ul></details>
+      <p class="note">Ces fiches aident à agir mais ne remplacent pas une formation. Une formation aux premiers secours (PSC) dure environ une journée, auprès de la Croix-Rouge, de la Protection civile ou des pompiers.</p>
+    </div>`;
+}
+
+/* ---------- Kit ---------- */
+function renderKit(){
+  const done = KIT.filter(k => S.kit[k.id] && S.kit[k.id].ok).length;
+  const today = todayISO();
+  document.getElementById("v-kit").innerHTML = `
+    <h1 class="page">Mon kit 72 h</h1>
+    <p class="lead">De quoi tenir trois jours chez toi sans aide extérieure. Vérifie-le deux fois par an.</p>
+    <div class="panel">
+      <div class="meter"><span style="width:${Math.round(done/KIT.length*100)}%"></span></div>
+      <p style="margin:0">${done} sur ${KIT.length} prêts.</p>
+    </div>
+    <div class="panel">
+      ${KIT.map(k => { const v = S.kit[k.id] || {}; const late = v.exp && v.exp < today; return `
+        <div class="kit-item">
+          <input type="checkbox" id="k-${k.id}" data-kit="${k.id}" ${v.ok ? "checked" : ""}>
+          <label class="t" for="k-${k.id}" style="font-weight:400;margin:0">${k.t}${late ? `<span class="late">Date dépassée, à remplacer</span>` : ""}</label>
+          <input type="date" class="exp" data-exp="${k.id}" value="${esc(v.exp||"")}" aria-label="Date de péremption ou de vérification : ${k.t}">
+        </div>`; }).join("")}
+      <p class="note">La date sert à noter une péremption ou la prochaine vérification.</p>
+    </div>`;
+}
+
+/* ---------- Entraide ---------- */
+let postFilter = "offre";
+function renderHelp(){
+  const list = S.posts.filter(p => p.type === postFilter);
+  document.getElementById("v-entraide").innerHTML = `
+    <h1 class="page">Entraide</h1>
+    <p class="lead">Troc, coups de main et aide aux voisins fragiles.</p>
+    <div class="banner">Dans cette version, les annonces restent sur ce téléphone. Le partage entre téléphones sans réseau, par Bluetooth, arrivera avec l’appli installée.</div>
+    <div class="tabs2" role="group" aria-label="Type d’annonce">
+      ${Object.entries(POST_TYPES).map(([k,v]) => `<button data-ptype="${k}" aria-pressed="${postFilter===k}">${v}</button>`).join("")}
+    </div>
+    <div class="panel">
+      ${list.length ? list.map(p => `
+        <div class="post"><span class="kind k-${p.type}">${POST_TYPES[p.type]}</span>
+          <p>${esc(p.text)}</p><small>Rendez-vous : ${esc(p.place||"à convenir")}${p.ex ? "" : `, publié le ${esc(p.time)}`}</small>
+          ${p.ex ? "" : ` <button class="x" style="border:0;background:none;color:var(--muted);font-size:.875rem" data-delpost="${p.id}">Retirer</button>`}</div>`).join("")
+        : `<p style="margin:0">Aucune annonce dans cette catégorie. Publie la première.</p>`}
+    </div>
+    <div class="panel">
+      <h2>Publier une annonce</h2>
+      <label for="po-type">Type</label><select id="po-type">${Object.entries(POST_TYPES).map(([k,v]) => `<option value="${k}" ${k===postFilter?"selected":""}>${v}</option>`).join("")}</select>
+      <label for="po-text">Message</label><textarea id="po-text" placeholder="Ce que tu proposes ou ce dont tu as besoin"></textarea>
+      <label for="po-place">Lieu de rendez-vous public</label><input type="text" id="po-place" placeholder="Ex. devant la mairie, 14 h">
+      <button class="btn full" data-act="add-post" style="margin-top:12px">Publier</button>
+      <p class="note">Pour ta sécurité : échanges dans un lieu public, jamais d’adresse personnelle. Pas d’échange de médicaments sur ordonnance : oriente vers une pharmacie ou les secours.</p>
+    </div>`;
+}
+
+/* ---------- Famille ---------- */
+function renderFamily(){
+  const f = S.family;
+  document.getElementById("v-famille").innerHTML = `
+    <h1 class="page">Plan familial</h1>
+    <p class="lead">À préparer maintenant, pour ne rien chercher le jour J. Tout reste sur ce téléphone.</p>
+    <div class="panel">
+      <h2>Mes proches</h2>
+      ${f.contacts.length ? f.contacts.map((c,i) => `<div class="place"><div><strong>${esc(c.name)}</strong><div class="d">${esc(c.tel)}</div></div><button class="x" data-delc="${i}">Supprimer</button></div>`).join("") : `<p style="margin:0">Ajoute les personnes à prévenir en priorité.</p>`}
+      <div class="two" style="margin-top:10px"><input type="text" id="c-name" placeholder="Nom" aria-label="Nom"><input type="tel" id="c-tel" placeholder="Téléphone" aria-label="Téléphone"></div>
+      <button class="btn small" data-act="add-contact" style="margin-top:8px">Ajouter</button>
+    </div>
+    <div class="panel">
+      <h2>Fiches santé de la famille</h2>
+      <p style="margin:0 0 10px">Une fiche par personne : elle s’affiche dans l’onglet Urgence pour la montrer aux secours.</p>
+      ${f.members.length ? f.members.map((m,i) => memberCard(m,i,true)).join("") : ""}
+      <details style="border-top:1px solid var(--line);padding-top:12px;margin-top:10px"><summary>Ajouter une personne</summary>
+        <label for="m-name">Prénom et nom</label><input type="text" id="m-name">
+        <label for="m-age">Âge</label><input type="text" id="m-age" placeholder="Ex. 72 ans">
+        <label for="m-chronic">Maladies chroniques</label><input type="text" id="m-chronic" placeholder="Ex. diabète, asthme, problème cardiaque">
+        <label for="m-treat">Traitements et horaires</label><textarea id="m-treat" placeholder="Nom du médicament, dose, moment de la prise"></textarea>
+        <label for="m-allergy">Allergies</label><input type="text" id="m-allergy">
+        <label for="m-devices">Appareils</label><input type="text" id="m-devices" placeholder="Aides auditives, lunettes, fauteuil, oxygène…">
+        <label for="m-care">Soins particuliers</label><textarea id="m-care" placeholder="Ex. insuline à garder au frais, pansements quotidiens, dialyse"></textarea>
+        <label for="m-doctor">Médecin ou spécialiste</label><input type="text" id="m-doctor" placeholder="Nom et téléphone">
+        <button class="btn small" data-act="add-member" style="margin-top:10px">Ajouter la fiche</button>
+      </details>
+    </div>
+    <div class="panel">
+      <h2>Où se retrouver</h2>
+      <label for="f-meet">Point de rendez-vous près de chez nous</label><input type="text" id="f-meet" value="${esc(f.meet)}" placeholder="Ex. square au bout de la rue">
+      <label for="f-meet2">Point de rendez-vous hors du quartier</label><input type="text" id="f-meet2" value="${esc(f.meet2)}" placeholder="Ex. chez mamie, à …">
+      <p class="note">Place ces points sur la carte pour que chacun puisse être guidé jusqu’à eux sans réseau.</p>
+      <div class="row" style="margin-top:8px"><button class="btn line small" data-act="pin-meet" data-which="meet">Placer le 1er point</button><button class="btn line small" data-act="pin-meet" data-which="meet2">Placer le 2e point</button></div>
+    </div>
+    <div class="panel">
+      <h2>Infos importantes</h2>
+      <label for="f-med">Notes générales</label><textarea id="f-med" placeholder="Ce qu’il faut savoir en plus : stock de médicaments, matériel médical à la maison…">${esc(f.medical)}</textarea>
+      <label for="f-pets">Animaux</label><input type="text" id="f-pets" value="${esc(f.pets)}" placeholder="Nom, espèce, traitement, vétérinaire">
+      <button class="btn full" data-act="save-family" style="margin-top:12px">Enregistrer le plan</button>
+    </div>
+    <button class="btn line full" data-act="reset">Effacer toutes mes données</button>`;
+}
+
+function renderAll(){ renderHome(); renderAround(); renderSecours(); renderKit(); renderHelp(); renderFamily(); netStatus(); }
+
+/* ---------- Carte hors ligne ---------- */
+const MAPFILE = "carte.pmtiles", MAPCACHE = "refuge-carte";
+const BASE = location.origin + location.pathname.replace(/[^/]*$/, "");
+let map = null, markers = [], tempMarker = null, mapSize = 0, pmProto = null;
+const gid = id => document.getElementById(id);
+const mo = n => Math.max(1, Math.round(n/1048576)) + " Mo";
+async function storedMap(){
+  if(!("caches" in window)) return null;
+  try{ const c = await caches.open(MAPCACHE); const r = await c.match(BASE + MAPFILE); return r ? await r.blob() : null; }catch(e){ return null; }
+}
+function refreshMapPanel(){
+  gid("map-status").textContent = map
+    ? `Carte enregistrée sur ce téléphone (${mo(mapSize)}). Elle fonctionne sans réseau. Touche la carte pour placer un nouveau lieu à cet endroit.`
+    : "Télécharge la carte une seule fois, de préférence en wifi. Ensuite, elle s’affiche sans réseau, avec ta position GPS.";
+  gid("map-dl").textContent = map ? "Mettre à jour la carte" : "Télécharger la carte";
+  gid("map-del").hidden = !map;
+  gid("mapwrap").hidden = !map;
+}
+async function downloadMap(){
+  const st = gid("map-status"), err = gid("map-err"), meter = gid("map-meter"), bar = gid("map-bar"), btn = gid("map-dl");
+  err.textContent = "";
+  if(!navigator.onLine){ err.textContent = "Il faut du réseau, de préférence du wifi, pour télécharger la carte."; return; }
+  if(!("caches" in window)){ err.textContent = "Ce navigateur ne permet pas d’enregistrer la carte. Essaie avec Safari sur iPhone ou Chrome sur Android."; return; }
+  btn.disabled = true; meter.hidden = false; bar.style.width = "0%"; st.textContent = "Téléchargement de la carte…";
+  try{
+    const res = await fetch(BASE + MAPFILE, {cache:"no-store"});
+    if(!res.ok) throw new Error(res.status === 404 ? "absent" : "http");
+    const total = +res.headers.get("Content-Length") || 0;
+    const reader = res.body.getReader(); const chunks = []; let got = 0;
+    for(;;){
+      const {done, value} = await reader.read(); if(done) break;
+      chunks.push(value); got += value.length;
+      if(total){ bar.style.width = Math.round(got/total*100) + "%"; st.textContent = `Téléchargement : ${mo(got)} sur ${mo(total)}`; }
+      else st.textContent = `Téléchargement : ${mo(got)}`;
+    }
+    const blob = new Blob(chunks, {type:"application/octet-stream"});
+    const c = await caches.open(MAPCACHE);
+    await c.put(BASE + MAPFILE, new Response(blob, {headers:{"Content-Type":"application/octet-stream"}}));
+    if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+    await initMap(blob);
+    toast("Carte enregistrée : elle marche maintenant sans réseau");
+  }catch(e){
+    err.textContent = e.message === "absent" ? "La carte n’est pas encore disponible sur le site : le fichier carte.pmtiles doit y être ajouté."
+      : (e.name === "QuotaExceededError" ? "Pas assez de place sur le téléphone pour enregistrer la carte. Libère de l’espace puis réessaie."
+      : "Le téléchargement a échoué. Vérifie ta connexion et réessaie.");
+  }finally{
+    btn.disabled = false; meter.hidden = true; refreshMapPanel();
+  }
+}
+async function deleteMap(){
+  if(!confirm("Supprimer la carte de ce téléphone ? Il faudra du réseau pour la télécharger à nouveau.")) return;
+  try{ await caches.delete(MAPCACHE); }catch(e){}
+  if(map){ map.remove(); map = null; markers = []; tempMarker = null; }
+  mapSize = 0; refreshMapPanel(); renderAround(); toast("Carte supprimée");
+}
+async function initMap(blob){
+  const err = gid("map-err");
+  if(typeof maplibregl === "undefined" || typeof pmtiles === "undefined" || typeof basemaps === "undefined"){ err.textContent = "Le moteur de carte n’a pas pu se charger. Rouvre l’appli avec du réseau une fois."; return; }
+  if(map){ map.remove(); map = null; markers = []; tempMarker = null; }
+  if(!pmProto){ pmProto = new pmtiles.Protocol(); maplibregl.addProtocol("pmtiles", pmProto.tile); }
+  const archive = new pmtiles.PMTiles(new pmtiles.FileSource(new File([blob], MAPFILE)));
+  pmProto.add(archive);
+  let h;
+  try{ h = await archive.getHeader(); }catch(e){ err.textContent = "Le fichier de carte est abîmé. Supprime-le puis télécharge-le à nouveau."; return; }
+  mapSize = blob.size;
+  gid("mapwrap").hidden = false;
+  const flavor = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  const inside = S.pos && S.pos.lng >= h.minLon && S.pos.lng <= h.maxLon && S.pos.lat >= h.minLat && S.pos.lat <= h.maxLat;
+  map = new maplibregl.Map({
+    container:"map",
+    style:{
+      version:8,
+      glyphs: BASE + "assets/fonts/{fontstack}/{range}.pbf",
+      sprite: BASE + "assets/sprites/" + flavor,
+      sources:{ protomaps:{ type:"vector", url:"pmtiles://" + MAPFILE, attribution:'<a href="https://www.openstreetmap.org/copyright">© contributeurs OpenStreetMap</a>, <a href="https://protomaps.com">Protomaps</a>' } },
+      layers: basemaps.layers("protomaps", basemaps.namedFlavor(flavor), {lang:"fr"})
+    },
+    center: inside ? [S.pos.lng, S.pos.lat] : [(h.minLon+h.maxLon)/2, (h.minLat+h.maxLat)/2],
+    zoom: inside ? 14 : 11,
+    maxZoom: 19,
+    maxBounds: [[h.minLon-0.1, h.minLat-0.1],[h.maxLon+0.1, h.maxLat+0.1]],
+    attributionControl:{compact:true}
+  });
+  map.addControl(new maplibregl.NavigationControl({showCompass:true}), "top-right");
+  const geo = new maplibregl.GeolocateControl({positionOptions:{enableHighAccuracy:true}, trackUserLocation:true, showAccuracyCircle:true});
+  map.addControl(geo, "top-right");
+  geo.on("geolocate", p => { S.pos = {lat:p.coords.latitude, lng:p.coords.longitude, acc:Math.round(p.coords.accuracy), t:nowTxt()}; save(); });
+  map.addControl(new maplibregl.ScaleControl({unit:"metric"}), "bottom-left");
+  map.on("click", e => {
+    const {lng, lat} = e.lngLat;
+    if(tempMarker) tempMarker.remove();
+    tempMarker = new maplibregl.Marker({color:"#D9480F"}).setLngLat([lng, lat]).addTo(map);
+    const la = gid("pl-lat"), ln = gid("pl-lng");
+    if(la && ln){ la.value = lat.toFixed(6); ln.value = lng.toFixed(6); }
+    toast("Point choisi : donne-lui un nom plus bas, puis « Ajouter ce lieu »");
+  });
+  map.on("error", ev => { if(ev && ev.error) console.warn(ev.error); });
+  refreshMapPanel(); renderAround();
+}
+function drawMarkers(){
+  if(!map) return;
+  markers.forEach(m => m.remove()); markers = [];
+  S.places.filter(pl => catFilter === "tout" || pl.cat === catFilter).forEach(pl => {
+    const cat = CATS.find(c => c.id === pl.cat) || CATS[CATS.length-1];
+    const el = document.createElement("div");
+    el.className = "mpin"; el.style.background = cat.c; el.textContent = cat.l;
+    el.setAttribute("role","button"); el.setAttribute("aria-label", pl.name);
+    const pop = new maplibregl.Popup({offset:18}).setHTML(`<strong>${esc(pl.name)}</strong><br>${cat.name}${pl.note ? `<br>${esc(pl.note)}` : ""}<br><button class="btn small" data-guide="${pl.id}" style="margin-top:8px">Guide-moi</button>`);
+    markers.push(new maplibregl.Marker({element:el}).setLngLat([pl.lng, pl.lat]).setPopup(pop).addTo(map));
+  });
+}
+
+/* ---------- Navigation ---------- */
+function show(v){
+  if(!VIEWS.includes(v)) v = "accueil";
+  VIEWS.forEach(x => document.getElementById("v-"+x).classList.toggle("on", x===v));
+  document.querySelectorAll(".nav button").forEach(b => b.removeAttribute("aria-current"));
+  const cur = document.querySelector(`.nav button[data-go="${v}"]`); if(cur) cur.setAttribute("aria-current","page");
+  window.scrollTo(0,0);
+  if(v === "autour" && map) setTimeout(() => map.resize(), 60);
+}
+function go(v){ if(location.hash !== "#"+v) location.hash = v; else show(v); }
+window.addEventListener("hashchange", () => show(location.hash.slice(1)));
+
+/* ---------- Actions ---------- */
+document.addEventListener("change", e => {
+  const t = e.target;
+  if(t.dataset.kit){ const k = S.kit[t.dataset.kit] || (S.kit[t.dataset.kit] = {}); k.ok = t.checked; save(); renderKit(); renderHome(); }
+  if(t.dataset.exp){ const k = S.kit[t.dataset.exp] || (S.kit[t.dataset.exp] = {}); k.exp = t.value; save(); renderKit(); }
+});
+document.addEventListener("click", e => {
+  const t = e.target.closest("button, a[data-sms]");
+  if(!t) return;
+  if(t.dataset.go){ go(t.dataset.go); return; }
+  if(t.dataset.sms !== undefined){
+    e.preventDefault();
+    const c = S.family.contacts.filter(x => x.tel)[+t.dataset.sms];
+    const body = encodeURIComponent(document.getElementById("okmsg").value);
+    window.open("sms:" + c.tel.replace(/\s/g,"") + "?&body=" + body, "_top");
+    return;
+  }
+  if(t.dataset.guide){ startGuide(+t.dataset.guide); return; }
+  if(t.dataset.cat){ catFilter = t.dataset.cat; renderAround(); return; }
+  if(t.dataset.del){ S.places = S.places.filter(p => p.id !== +t.dataset.del); save(); renderAround(); toast("Lieu supprimé"); return; }
+  if(t.dataset.ptype){ postFilter = t.dataset.ptype; renderHelp(); return; }
+  if(t.dataset.delpost){ S.posts = S.posts.filter(p => p.id !== +t.dataset.delpost); save(); renderHelp(); return; }
+  if(t.dataset.delm !== undefined){ S.family.members.splice(+t.dataset.delm,1); save(); renderFamily(); renderHome(); return; }
+  if(t.dataset.delc !== undefined){ S.family.contacts.splice(+t.dataset.delc,1); save(); renderFamily(); renderHome(); return; }
+  switch(t.dataset.act){
+    case "sos": {
+      const panel = document.getElementById("sos-panel"); panel.hidden = false;
+      t.querySelector("strong").textContent = "Recherche de ta position…";
+      locate(err => {
+        renderHome();
+        if(err){ document.getElementById("sos-panel").hidden = false; document.getElementById("sos-err").textContent = err; }
+        document.getElementById("sos-panel").scrollIntoView({block:"start"});
+      });
+      break;
+    }
+    case "locate":
+      t.textContent = "Recherche…";
+      locate(err => { renderAround(); renderHome(); if(err) document.getElementById("loc-err").textContent = err; else toast("Position mise à jour"); });
+      break;
+    case "here":
+      t.textContent = "Recherche…";
+      locate(err => {
+        t.textContent = "Je suis sur place";
+        if(err){ document.getElementById("pl-err").textContent = err; return; }
+        document.getElementById("pl-lat").value = S.pos.lat.toFixed(6);
+        document.getElementById("pl-lng").value = S.pos.lng.toFixed(6);
+      });
+      break;
+    case "add-place": {
+      const name = document.getElementById("pl-name").value.trim();
+      const lat = parseFloat(document.getElementById("pl-lat").value), lng = parseFloat(document.getElementById("pl-lng").value);
+      const errEl = document.getElementById("pl-err");
+      if(!name){ errEl.textContent = "Donne un nom à ce lieu."; return; }
+      if(!(lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180)){ errEl.textContent = "Indique l’emplacement : appuie sur « Je suis sur place » ou saisis latitude et longitude."; return; }
+      S.places.push({id:Date.now(), name, cat:document.getElementById("pl-cat").value, note:document.getElementById("pl-note").value.trim(), lat, lng});
+      save(); if(tempMarker){ tempMarker.remove(); tempMarker = null; } renderAround(); toast("Lieu ajouté");
+      break;
+    }
+    case "add-post": {
+      const text = document.getElementById("po-text").value.trim();
+      if(!text){ toast("Écris ton message avant de publier"); return; }
+      const type = document.getElementById("po-type").value;
+      S.posts.unshift({id:Date.now(), type, text, place:document.getElementById("po-place").value.trim(), time:nowTxt()});
+      postFilter = type; save(); renderHelp(); toast("Annonce publiée");
+      break;
+    }
+    case "add-contact": {
+      const name = document.getElementById("c-name").value.trim(), tel = document.getElementById("c-tel").value.trim();
+      if(!tel){ toast("Indique au moins un numéro"); return; }
+      S.family.contacts.push({name, tel}); save(); renderFamily(); renderHome(); toast("Proche ajouté");
+      break;
+    }
+    case "map-dl":
+      downloadMap();
+      break;
+    case "map-del":
+      deleteMap();
+      break;
+    case "stop-guide":
+      stopGuide();
+      break;
+    case "pin-meet": {
+      const v = document.getElementById("f-" + t.dataset.which).value.trim();
+      S.family[t.dataset.which] = v; save();
+      prefill = {name: v ? "Rendez-vous : " + v : "Point de rencontre", cat:"rdv"};
+      catFilter = "tout"; renderAround(); go("autour");
+      setTimeout(() => { const n = document.getElementById("pl-name"); if(n){ n.scrollIntoView({block:"center"}); } }, 50);
+      toast("Va sur place et appuie sur « Je suis sur place », ou saisis les coordonnées");
+      break;
+    }
+    case "add-member": {
+      const g = id => document.getElementById(id).value.trim();
+      const name = g("m-name");
+      if(!name){ toast("Indique au moins le prénom"); return; }
+      S.family.members.push({name, age:g("m-age"), chronic:g("m-chronic"), treat:g("m-treat"), allergy:g("m-allergy"), devices:g("m-devices"), care:g("m-care"), doctor:g("m-doctor")});
+      save(); renderFamily(); renderHome(); toast("Fiche ajoutée");
+      break;
+    }
+    case "save-family":
+      S.family.meet = document.getElementById("f-meet").value;
+      S.family.meet2 = document.getElementById("f-meet2").value;
+      S.family.medical = document.getElementById("f-med").value;
+      S.family.pets = document.getElementById("f-pets").value;
+      save(); toast("Plan familial enregistré");
+      break;
+    case "reset":
+      if(confirm("Effacer tous tes lieux, ton kit, tes annonces et ton plan familial ?")){ S = fresh(); save(); renderAll(); toast("Données effacées"); }
+      break;
+  }
+});
+
+renderAll();
+show(location.hash.slice(1));
+refreshMapPanel();
+storedMap().then(b => { if(b) initMap(b); });
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(() => {}); }
+})();
+</script>
+</body>
+</html>
