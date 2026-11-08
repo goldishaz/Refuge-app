@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -766,7 +766,7 @@ async function initMap(blob, z){
   activeZone = z.id; S.zone = z.id; save();
   if(!have[z.id]){ have[z.id] = blob.size; saveHave(); }
   gid("mapwrap").hidden = false;
-  const flavor = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  const flavor = document.documentElement.dataset.theme === "dark" ? "dark" : (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   const inside = S.pos && S.pos.lng >= h.minLon && S.pos.lng <= h.maxLon && S.pos.lat >= h.minLat && S.pos.lat <= h.maxLat;
   map = new maplibregl.Map({
     container:"map",

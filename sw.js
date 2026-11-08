@@ -1,6 +1,6 @@
 /* Refuge : fonctionnement hors ligne de l’appli.
    La carte (carte.pmtiles) est enregistrée à part, par le bouton « Télécharger la carte ». */
-const VERSION = "refuge-app-v4";
+const VERSION = "refuge-app-v5";
 const SHELL = [
   "./",
   "assets/fonts/Noto%20Sans%20Italic/0-255.pbf",
