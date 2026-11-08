@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Refuge – appli d’urgence</title>
-<meta name="theme-color" content="#D9480F">
+<meta name="theme-color" content="#0E1A33">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Refuge">
@@ -27,20 +27,20 @@
 .maplibregl-popup-content{color:#13202F;font-family:"Atkinson Hyperlegible",system-ui,sans-serif;font-size:15px;padding:12px 14px}
 .maplibregl-popup-content .btn{background:#13202F;color:#fff}
 :root{
-  --bg:#E9EDF1; --surface:#FFFFFF; --surface-2:#DDE3EA; --ink:#13202F; --muted:#556476; --line:#C9D2DC;
-  --signal:#D9480F; --signal-ink:#FFFFFF; --safe:#24794F; --blue:#2457A6; --warn:#A86300;
+  --bg:#F3EFE4; --surface:#FFFDF7; --surface-2:#ECE4D0; --ink:#13254A; --muted:#5B6478; --line:#DCD2BB;
+  --signal:#C62F25; --signal-ink:#FFFFFF; --safe:#46702A; --blue:#1F3B73; --warn:#9A6200; --gold:#96650C;
   color-scheme:light; box-sizing:border-box;
   padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
-    --bg:#0E151E; --surface:#17212D; --surface-2:#223040; --ink:#E8EEF4; --muted:#9AA9B9; --line:#2E3D4F;
-    --signal:#FF6B35; --signal-ink:#1A0E07; --safe:#4FC58A; --blue:#7FA8F0; --warn:#F2B04B; color-scheme:dark;
+    --bg:#0E1A33; --surface:#16264A; --surface-2:#1F3360; --ink:#F3E9D2; --muted:#A9B3C9; --line:#2C3F6B;
+    --signal:#FF5A4A; --signal-ink:#1A0B08; --safe:#8DBA5A; --blue:#8FB0F0; --warn:#F2B84B; --gold:#E2B04A; color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
-  --bg:#0E151E; --surface:#17212D; --surface-2:#223040; --ink:#E8EEF4; --muted:#9AA9B9; --line:#2E3D4F;
-  --signal:#FF6B35; --signal-ink:#1A0E07; --safe:#4FC58A; --blue:#7FA8F0; --warn:#F2B04B; color-scheme:dark;
+  --bg:#0E1A33; --surface:#16264A; --surface-2:#1F3360; --ink:#F3E9D2; --muted:#A9B3C9; --line:#2C3F6B;
+  --signal:#FF5A4A; --signal-ink:#1A0B08; --safe:#8DBA5A; --blue:#8FB0F0; --warn:#F2B84B; --gold:#E2B04A; color-scheme:dark;
 }
 *,*::before,*::after{box-sizing:inherit}
 html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
@@ -54,10 +54,8 @@ a{color:inherit}
 
 .top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);max-width:520px;margin:0 auto;padding:14px 20px 10px;display:flex;align-items:center;justify-content:space-between}
 .brand{font-size:1.5rem;font-weight:700;display:flex;align-items:center;gap:10px}
-.brand .mark{width:26px;height:26px;border-radius:7px;background:var(--signal);position:relative}
-.brand .mark::before,.brand .mark::after{content:"";position:absolute;background:var(--signal-ink);border-radius:2px}
-.brand .mark::before{left:11px;top:5px;width:4px;height:16px}
-.brand .mark::after{left:5px;top:11px;width:16px;height:4px}
+.brand img{width:34px;height:34px;border-radius:50%;display:block;box-shadow:0 0 0 2px var(--gold)}
+.hero{display:block;width:100%;height:auto;aspect-ratio:900/394;object-fit:cover;border-radius:18px;margin:4px 0 14px;border:2px solid var(--gold)}
 .offline{font-size:.8125rem;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted)}
 .offline.off{color:var(--warn);border-color:var(--warn)}
 main{max-width:520px;margin:0 auto;padding:4px 20px 112px}
@@ -141,7 +139,7 @@ textarea{min-height:76px;resize:vertical}
 .call-first{border-left:4px solid var(--signal);padding:8px 12px;background:var(--surface-2);border-radius:8px;margin:8px 0}
 .nav button{border:0;background:none;padding:9px 2px 7px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:.75rem;color:var(--muted)}
 .nav svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
-.nav button[aria-current="page"]{color:var(--signal);font-weight:700}
+.nav button[aria-current="page"]{color:var(--gold);font-weight:700}
 .toast{position:fixed;left:50%;bottom:calc(80px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);opacity:0;background:var(--ink);color:var(--surface);padding:12px 16px;border-radius:12px;max-width:min(440px,calc(100% - 40px));transition:opacity .2s;pointer-events:none;z-index:8;font-size:.9375rem}
 .toast.on{opacity:1}
 .guide{position:fixed;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:calc(24px + env(safe-area-inset-top,0px)) 24px calc(24px + env(safe-area-inset-bottom,0px))}
@@ -156,7 +154,7 @@ textarea{min-height:76px;resize:vertical}
 </head>
 <body>
 <header class="top">
-  <div class="brand"><span class="mark" aria-hidden="true"></span>Refuge</div>
+  <div class="brand"><img src="icons/icon-192.png" alt="" width="34" height="34">Refuge</div>
   <span class="offline" id="net"></span>
 </header>
 
@@ -312,6 +310,7 @@ function renderHome(){
   const fam = S.family.contacts.filter(c => c.tel);
   const okMsg = `Je vais bien. ${p ? `Ma position : ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}. ` : ""}Message envoyé le ${nowTxt()}.`;
   document.getElementById("v-accueil").innerHTML = `
+    <img class="hero" src="icons/hero.jpg" alt="Une famille réunie autour d’une lanterne, devant un refuge éclairé" width="900" height="394">
     <h1 class="page">En cas d’urgence</h1>
     <p class="lead">Tout ce qu’il faut, même sans réseau.</p>
     <button class="sos" data-act="sos"><strong>SOS : ma position</strong><span>Affiche tes coordonnées à donner aux secours</span></button>
